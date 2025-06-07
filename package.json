@@ -17,6 +17,10 @@
       {
         "command": "ocaml-platform-extensions.addToDuneWorkspace",
         "title": "Add directory to root dune file"
+      },
+      {
+        "command": "ocaml-platform-extensions.promoteCorrectedFiles",
+        "title": "Promote Corrected Files"
       }
     ],
     "menus": {

@@ -1,6 +1,8 @@
 const vscode = require('vscode');
 const fs = require('fs').promises;
 const path = require('path');
+const { exec } = require('child_process');
+
 
 async function fileExists(filePath) {
     try {
@@ -133,11 +135,95 @@ async function addToDuneWorkspace(selectedUri) {
     }
 }
 
+async function executeDunePromote(workspaceRoot, file) {
+    return new Promise((resolve, reject) => {
+        // Build the dune promote command
+        const baseCmd = 'dune promotion apply';
+        const fullCmd = file
+            ? `${baseCmd} "${file}"`
+            : baseCmd;
+
+        const options = {
+            cwd: workspaceRoot,
+            shell: true
+        };
+
+        exec(fullCmd, options, (error, stdout, stderr) => {
+            if (error) {
+                reject({ error, stderr });
+            } else {
+                resolve(stdout);
+            }
+        });
+    });
+}
+
+async function getPromotionCandidates(workspaceRoot) {
+    return new Promise((resolve) => {
+        exec('dune promotion list',
+            { cwd: workspaceRoot, shell: true },
+            (error, _stdout, stderr) => {
+                if (error || !stderr.trim()) {
+                    vscode.window.showErrorMessage(`dune promotion list error: ${error} ${stderr}`);
+                    resolve([]);
+                } else {
+                    resolve(stderr.trim().split('\n').map(f => f.trim()));
+                }
+            });
+    });
+}
+
+async function promoteCorrectedFiles() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage('No workspace opened');
+        return;
+    }
+
+    const rootPath = workspaceFolders[0].uri.fsPath;
+    const candidates = await getPromotionCandidates(rootPath);
+
+    if (candidates.length === 0) {
+        vscode.window.showInformationMessage('No .corrected files found');
+        return;
+    }
+
+    const promotionOptions = [
+        {
+            label: '$(check-all) Promote all files',
+            description: 'Accept all pending promotions',
+            alwaysShow: true,
+            isPromoteAll: true
+        },
+        ...candidates.map(filePath => ({
+            label: path.basename(filePath),
+            description: filePath,
+            filePath,
+            alwaysShow: true
+        }))
+    ];
+
+    const choice = await vscode.window.showQuickPick(promotionOptions, {
+        placeHolder: 'Select files to promote',
+        canPickMany: false, // Single selection only
+        matchOnDescription: true
+    });
+
+    let description = choice.description;
+
+    let arg = description === 'Accept all pending promotions' ? null : description;
+    const result = await executeDunePromote(rootPath, arg);
+    if (!result.success) {
+        vscode.window.showErrorMessage(`Failed to promote files`);
+    }
+    vscode.window.showInformationMessage(`Promotion success`);
+}
+
 let prefix = "ocaml-platform-extensions"
 
 async function activate(context) {
     // Register file switcher command
-    let switchDisposable = vscode.commands.registerCommand(`${prefix}.switchFiles`, async () => {
+    context.subscriptions.push(vscode.commands.registerCommand(`${prefix}.switchFiles`, async () => {
         const targetFile = await switchOcamlFile(vscode.window.activeTextEditor);
         if (targetFile) {
             try {
@@ -147,15 +233,20 @@ async function activate(context) {
                 vscode.window.showErrorMessage(`Failed to open file: ${targetFile}`);
             }
         }
-    });
+    }));
 
     // Register dune workspace command
-    let duneDisposable = vscode.commands.registerCommand(
+    context.subscriptions.push(vscode.commands.registerCommand(
         `${prefix}.addToDuneWorkspace`,
         addToDuneWorkspace  // Pass the URI when called from context menu
-    );
+    ));
 
-    context.subscriptions.push(switchDisposable, duneDisposable);
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            `${prefix}.promoteCorrectedFiles`,
+            promoteCorrectedFiles
+        )
+    );
 }
 
 exports.activate = activate;
