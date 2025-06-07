@@ -1,0 +1,32 @@
+{
+  "name": "ocaml-platform-extensions",
+  "displayName": "OCaml Platform Extensions",
+  "description": "random extensions for ocaml platform",
+  "version": "0.0.1",
+  "publisher": "zhizma",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ocaml-platform-extensions.switchFiles",
+        "title": "Switch OCaml Files between .ml and .mli/_intf.ml"
+      },
+      {
+        "command": "ocaml-platform-extensions.addToDuneWorkspace",
+        "title": "Add directory to root dune file"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "ocaml-platform-extensions.addToDuneWorkspace",
+          "when": "explorerResourceIsFolder",
+          "group": "OCaml"
+        }
+      ]
+    }
+  }
+}
